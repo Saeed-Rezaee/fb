@@ -11,11 +11,13 @@ struct fbdev_t {
 	struct fb_fix_screeninfo finfo;
 	struct fb_var_screeninfo vinfo;
 	int flags;
+	int blend;
 	int kdsave;
 	long ssize;
 	uint8_t *fbuf;
 	uint8_t *bbuf;
 	uint8_t *bufp;
+	uint32_t rmask, gmask, bmask, amask;
 	uint32_t black, white;
 };
 
@@ -27,9 +29,17 @@ enum {
 	SET_KD_MODE		= 1 << 3,
 };
 
+enum {
+	BLEND_NONE,
+	BLEND_ALPHA,
+	BLEND_ADD
+};
+
 int fb_init(FBDev *dev, int flags);
 void fb_size(FBDev *dev, int *w, int *h);
 uint32_t fb_rgb(FBDev *dev, uint8_t r, uint8_t g, uint8_t b);
+uint32_t fb_rgba(FBDev *dev, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+void fb_blend(FBDev *dev, int blend);
 void fb_draw(FBDev *dev, int x, int y, uint32_t pixel);
 void fb_clear(FBDev *dev, uint32_t pixel);
 void fb_swap(FBDev *dev);

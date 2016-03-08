@@ -61,8 +61,16 @@ int fb_init(FBDev *dev, int flags) {
 	if (ioctl(dev->fd, FBIOGET_VSCREENINFO, &(dev->vinfo)) < 0) {
 		warn("failed to get variable screen info: %s", strerror(errno));
 	}
+
 	dev->vinfo.grayscale = 0; // Disable grayscale
-	dev->vinfo.bits_per_pixel = 32;
+
+	// Set alpha offset and length if depth is sufficient
+	uint32_t rgb_length = dev->vinfo.red.length + dev->vinfo.green.length + dev->vinfo.blue.length;
+	if (rgb_length < dev->vinfo.bits_per_pixel) {
+		dev->vinfo.transp.offset = rgb_length;
+		dev->vinfo.transp.length = dev->vinfo.bits_per_pixel - rgb_length;
+	}
+
 	if (ioctl(dev->fd, FBIOPUT_VSCREENINFO, &(dev->vinfo)) < 0) {
 		warn("failed to set variable screen info: %s", strerror(errno));
 	}
@@ -123,6 +131,14 @@ int fb_init(FBDev *dev, int flags) {
 
 	dev->flags = flags;
 
+	dev->blend = BLEND_NONE;
+
+	// Masks for extracting specific bitfields from any pixel
+	dev->rmask = ((1 << dev->vinfo.red.length) - 1) << dev->vinfo.red.offset;
+	dev->gmask = ((1 << dev->vinfo.green.length) - 1) << dev->vinfo.green.offset;
+	dev->bmask = ((1 << dev->vinfo.blue.length) - 1) << dev->vinfo.blue.offset;
+	dev->amask = ((1 << dev->vinfo.transp.length) - 1) << dev->vinfo.transp.offset;
+
 	// Commonly used colors
 	dev->black = fb_rgb(dev, 0x00, 0x00, 0x00);
 	dev->white = fb_rgb(dev, 0xFF, 0xFF, 0xFF);
@@ -139,19 +155,48 @@ inline uint32_t fb_rgb(FBDev *dev, uint8_t r, uint8_t g, uint8_t b) {
 	return (r<<dev->vinfo.red.offset) | (g<<dev->vinfo.green.offset) | (b<<dev->vinfo.blue.offset);
 }
 
-void fb_draw(FBDev *dev, int x, int y, uint32_t pixel) {
+inline uint32_t fb_rgba(FBDev *dev, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+	return (r<<dev->vinfo.red.offset) | (g<<dev->vinfo.green.offset) | (b<<dev->vinfo.blue.offset) | (a<<dev->vinfo.transp.offset);
+}
+
+void fb_blend(FBDev *dev, int blend) {
+	dev->blend = blend;
+}
+
+void fb_draw(FBDev *dev, int x, int y, uint32_t src) {
+#define RED(v)		((uint8_t)((v & dev->rmask) >> dev->vinfo.red.offset))
+#define GREEN(v)	((uint8_t)((v & dev->gmask) >> dev->vinfo.green.offset))
+#define BLUE(v)		((uint8_t)((v & dev->bmask) >> dev->vinfo.blue.offset))
+#define ALPHA(v)	((uint8_t)((v & dev->amask) >> dev->vinfo.transp.offset))
+
 	long location = (x+dev->vinfo.xoffset) * (dev->vinfo.bits_per_pixel/8)
 					+ (y+dev->vinfo.yoffset) * dev->finfo.line_length;
-	*((uint32_t*)(dev->bufp + location)) = pixel;
+	if (location > dev->ssize) {
+		return;
+	}
+	switch (dev->blend) {
+		default:
+		case BLEND_NONE:
+			*((uint32_t*)(dev->bufp + location)) = src;
+			break;
+		case BLEND_ALPHA:
+			*((uint32_t*)(dev->bufp + location)) = src;
+			break;
+		case BLEND_ADD:
+			*((uint32_t*)(dev->bufp + location)) = src;
+			break;
+	}
 }
 
 void fb_clear(FBDev *dev, uint32_t pixel) {
-	unsigned int x,y;
-	for (x = 0; x < dev->vinfo.xres; x++) {
-		for (y = 0; y < dev->vinfo.yres; y++) {
-			fb_draw(dev, x, y, pixel);
-		}
-	}
+//	unsigned int x,y;
+//	for (x = 0; x < dev->vinfo.xres; x++) {
+//		for (y = 0; y < dev->vinfo.yres; y++) {
+//			fb_draw(dev, x, y, pixel);
+//		}
+//	}
+
+	memset(dev->bbuf, pixel, dev->ssize);
 }
 
 void fb_swap(FBDev *dev) {
@@ -161,11 +206,6 @@ void fb_swap(FBDev *dev) {
 		return;
 	} else if (dev->flags & DBL_BUF_MEM) {
 		// Copy the back buffer to the front buffer
-//		unsigned int i;
-//		for (i = 0; i < (dev->vinfo.yres_virtual * dev->finfo.line_length)/4; i++) {
-//			((uint32_t *)(dev->fbuf))[i] = ((uint32_t *)(dev->bbuf))[i];
-//		}
-
 		memcpy(dev->fbuf, dev->bbuf, dev->ssize);
 	} else if (dev->flags & DBL_BUF_PAN) {
 		// "Pan" to the back buffer
@@ -217,42 +257,3 @@ void fb_close(FBDev *dev) {
 		warn("failed to close fb device: %s", strerror(errno));
 	}
 }
-
-//static void tty_open(FBDev *dev) {
-//	dev->tty_fd = -1;
-//	char *tty_name = tty_get_name();
-//	if (!tty_name) {
-//		return;
-//	}
-//
-//	dev->tty_fd = open(tty_name, O_RDWR);
-//	if (dev->tty_fd < 0) {
-//		warn("failed to open tty: %s", strerror(errno));
-//		return;
-//	}
-//	if (ioctl(dev->tty_fd, KDSETMODE, KD_GRAPHICS) < 0) {
-//		warn("failed to set kd graphics mode: %s", strerror(errno));
-//	}
-//	if (close(dev->tty_fd) < 0) {
-//		warn("failed to close tty: %s", strerror(errno));
-//	}
-//}
-//
-//static void tty_close(FBDev *dev) {
-//	char *tty_name = tty_get_name();
-//	if (!tty_name) {
-//		return;
-//	}
-//
-//	dev->tty_fd = open(tty_name, O_RDWR);
-//	if (dev->tty_fd < 0) {
-//		warn("failed to open tty: %s", strerror(errno));
-//		return;
-//	}
-//	if (ioctl(dev->tty_fd, KDSETMODE, KD_TEXT) < 0) {
-//		warn("failed to set kd text mode: %s", strerror(errno));
-//	}
-//	if (close(dev->tty_fd) < 0) {
-//		warn("failed to close tty: %s", strerror(errno));
-//	}
-//}

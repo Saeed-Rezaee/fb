@@ -9,12 +9,12 @@
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
-#define FPS 30
+#define FPS 60
 
 int main() {
 	FBDev dev;
 
-	if (fb_init(&dev, DBL_BUF_MEM | SET_KD_MODE) < 0) {
+	if (fb_init(&dev, DBL_BUF_NONE) < 0) {
 		exit(EXIT_FAILURE);
 	}
 
@@ -34,7 +34,7 @@ int main() {
 	x1 = w/2; y1 = h/2;
 	r = MIN(w/2, h/2);
 
-	uint32_t red = fb_rgb(&dev, 0xFF, 0x00, 0x00);
+	uint32_t red = fb_rgba(&dev, 0xFF, 0x00, 0x00, 0xFF);
 
 	while ((current_ms - start_ms) < 5000) {
 //		unsigned int delta_ms = get_current_ms() - previous_ms;

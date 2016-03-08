@@ -5,11 +5,11 @@
 void draw_hline(FBDev *dev, int x1, int x2, int y, uint32_t pixel) {
 	int x;
 	if (x1 < x2) {
-		for (x = x1; x <= x2; x++) {
+		for (x = x1; x < x2; x++) {
 			fb_draw(dev, x, y, pixel);
 		}
 	} else {
-		for (x = x2; x <= x1; x++) {
+		for (x = x2; x < x1; x++) {
 			fb_draw(dev, x, y, pixel);
 		}
 	}
@@ -18,11 +18,11 @@ void draw_hline(FBDev *dev, int x1, int x2, int y, uint32_t pixel) {
 void draw_vline(FBDev *dev, int x, int y1, int y2, uint32_t pixel) {
 	int y;
 	if (y1 < y2) {
-		for (y = y1; y <= y2; y++) {
+		for (y = y1; y < y2; y++) {
 			fb_draw(dev, x, y, pixel);
 		}
 	} else {
-		for (y = y2; y <= y1; y++) {
+		for (y = y2; y < y1; y++) {
 			fb_draw(dev, x, y, pixel);
 		}
 	}
